@@ -105,6 +105,7 @@ fn main() {
     )
     .unwrap();
 
+    let frame_delay = Duration::from_millis((1000 / camera.frame_rate()).into());
     while window.is_open() && !window.is_key_down(Key::Escape) {
         let frame = camera.frame().expect("Unable to get frame from camera");
         let image_buffer: Vec<u32> = frame
@@ -116,6 +117,6 @@ fn main() {
             .update_with_buffer(&image_buffer, width, height)
             .unwrap();
 
-        thread::sleep(Duration::from_millis((1000 / camera.frame_rate()).into()));
+        thread::sleep(frame_delay);
     }
 }
