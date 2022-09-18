@@ -1,20 +1,11 @@
 #![deny(clippy::all)]
 
-use rayon::prelude::*;
-
 mod led;
 
 use dialoguer::theme::ColorfulTheme;
 use dialoguer::Select;
-use minifb::{Key, Window, WindowOptions};
 use nokhwa::{Camera, CameraFormat, FrameFormat, Resolution};
 use std::cmp::Ordering;
-use std::{thread, time::Duration};
-
-fn from_u8_rgb(r: u8, g: u8, b: u8) -> u32 {
-    let (r, g, b) = (r as u32, g as u32, b as u32);
-    (r << 16) | (g << 8) | b
-}
 
 fn prompt_camera_device() -> usize {
     let mut devices = nokhwa::query().expect("Unable to query video devices");
@@ -87,44 +78,9 @@ fn prompt_camera(camera_index: usize) -> Camera {
     camera
 }
 
-fn start_visual_debugger(mut camera: Camera) {
-    let resolution = camera.resolution();
-    let width: usize = resolution.width().try_into().unwrap();
-    let height: usize = resolution.height().try_into().unwrap();
-
-    let mut window: Window = Window::new(
-        "afterglow",
-        width,
-        height,
-        WindowOptions {
-            title: false,
-            borderless: true,
-            ..WindowOptions::default()
-        },
-    )
-    .unwrap();
-
-    let frame_delay = Duration::from_millis((1000 / camera.frame_rate()).into());
-    while window.is_open() && !window.is_key_down(Key::Escape) {
-        let frame = camera.frame().expect("Unable to get frame from camera");
-        let image_buffer: Vec<u32> = frame
-            .as_raw()
-            .par_chunks_exact(3)
-            .map(|pixel| from_u8_rgb(pixel[0], pixel[1], pixel[2]))
-            .collect();
-        window
-            .update_with_buffer(&image_buffer, width, height)
-            .unwrap();
-
-        thread::sleep(frame_delay);
-    }
-}
-
 fn main() {
     let camera_index = prompt_camera_device();
     let mut camera = prompt_camera(camera_index);
 
     camera.open_stream().expect("Unable to open stream");
-
-    start_visual_debugger(camera);
 }
