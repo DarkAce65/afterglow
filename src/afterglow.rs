@@ -7,7 +7,7 @@ use dialoguer::Select;
 use led::LEDStrip;
 use nokhwa::{Camera, CameraFormat, FrameFormat, Resolution};
 use rppal::spi::{Bus, Mode, SlaveSelect, Spi};
-use std::cmp::Ordering;
+use std::{cmp::Ordering, thread::sleep, time::Duration};
 
 fn prompt_camera_device() -> usize {
     let mut devices = nokhwa::query().expect("Unable to query video devices");
@@ -98,6 +98,7 @@ fn main() {
             .collect();
         if !data.is_empty() {
             spi.write(&data).expect("Failed to write SPI data");
+            sleep(Duration::from_millis(500));
         }
     }
 }
