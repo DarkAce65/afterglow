@@ -1,6 +1,6 @@
 #[derive(PartialEq)]
 #[cfg_attr(test, derive(Debug))]
-enum APA102DataFrame {
+pub enum APA102DataFrame {
     Start,
     End,
     Led(u8, u8, u8),
@@ -36,11 +36,11 @@ impl From<APA102DataFrame> for [u8; 4] {
 }
 
 pub struct LEDStrip<const N: usize> {
-    data: [u32; N],
+    pub data: [u32; N],
 }
 
 impl<const N: usize> LEDStrip<N> {
-    fn make_data_frames(self) -> Vec<APA102DataFrame> {
+    pub fn make_data_frames(&self) -> Vec<APA102DataFrame> {
         if self.data.is_empty() {
             return Vec::new();
         }

@@ -4,7 +4,9 @@ mod led;
 
 use dialoguer::theme::ColorfulTheme;
 use dialoguer::Select;
+use led::LEDStrip;
 use nokhwa::{Camera, CameraFormat, FrameFormat, Resolution};
+use rppal::spi::{Bus, Mode, SlaveSelect, Spi};
 use std::cmp::Ordering;
 
 fn prompt_camera_device() -> usize {
@@ -83,4 +85,19 @@ fn main() {
     let mut camera = prompt_camera(camera_index);
 
     camera.open_stream().expect("Unable to open stream");
+
+    let mut spi = Spi::new(Bus::Spi0, SlaveSelect::Ss0, 16_000_000, Mode::Mode0)
+        .expect("Unable to initialize SPI");
+
+    let led_strip = LEDStrip { data: [0x0; 32] };
+    loop {
+        let data: Vec<u8> = led_strip
+            .make_data_frames()
+            .into_iter()
+            .flat_map(|frame| <[u8; 4]>::from(frame))
+            .collect();
+        if !data.is_empty() {
+            spi.write(&data).expect("Failed to write SPI data");
+        }
+    }
 }
