@@ -1,12 +1,20 @@
 #![deny(clippy::all)]
 
+#[cfg(feature = "visual")]
+use rayon::prelude::*;
+
+mod led;
+
 use dialoguer::theme::ColorfulTheme;
 use dialoguer::Select;
+#[cfg(feature = "visual")]
 use minifb::{Key, Window, WindowOptions};
 use nokhwa::{Camera, CameraFormat, FrameFormat, Resolution};
-use rayon::prelude::*;
-use std::{cmp::Ordering, thread, time::Duration};
+use std::cmp::Ordering;
+#[cfg(feature = "visual")]
+use std::{thread, time::Duration};
 
+#[cfg(feature = "visual")]
 fn from_u8_rgb(r: u8, g: u8, b: u8) -> u32 {
     let (r, g, b) = (r as u32, g as u32, b as u32);
     (r << 16) | (g << 8) | b
@@ -83,12 +91,8 @@ fn prompt_camera(camera_index: usize) -> Camera {
     camera
 }
 
-fn main() {
-    let camera_index = prompt_camera_device();
-    let mut camera = prompt_camera(camera_index);
-
-    camera.open_stream().expect("Unable to open stream");
-
+#[cfg(feature = "visual")]
+fn start_visual_debugger(mut camera: Camera) {
     let resolution = camera.resolution();
     let width: usize = resolution.width().try_into().unwrap();
     let height: usize = resolution.height().try_into().unwrap();
@@ -118,5 +122,17 @@ fn main() {
             .unwrap();
 
         thread::sleep(frame_delay);
+    }
+}
+
+fn main() {
+    let camera_index = prompt_camera_device();
+    let mut camera = prompt_camera(camera_index);
+
+    camera.open_stream().expect("Unable to open stream");
+
+    #[cfg(feature = "visual")]
+    {
+        start_visual_debugger(camera);
     }
 }
