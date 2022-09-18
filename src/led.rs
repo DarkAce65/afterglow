@@ -25,6 +25,16 @@ impl From<APA102DataFrame> for u32 {
     }
 }
 
+impl From<APA102DataFrame> for [u8; 4] {
+    fn from(frame: APA102DataFrame) -> Self {
+        match frame {
+            APA102DataFrame::Start => [0x00; 4],
+            APA102DataFrame::End => [0xff; 4],
+            APA102DataFrame::Led(r, g, b) => [0xff, b, g, r],
+        }
+    }
+}
+
 pub struct LEDStrip<const N: usize> {
     data: [u32; N],
 }
