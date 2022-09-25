@@ -89,16 +89,16 @@ fn main() {
     let mut spi = Spi::new(Bus::Spi0, SlaveSelect::Ss0, 16_000_000, Mode::Mode0)
         .expect("Unable to initialize SPI");
 
-    let led_strip = LEDStrip { data: [0x0; 32] };
+    const NUM_LEDS: usize = 10;
+    let mut i = 0;
+    let mut led_strip: LEDStrip<NUM_LEDS> = LEDStrip::new();
     loop {
-        let data: Vec<u8> = led_strip
-            .make_data_frames()
-            .into_iter()
-            .flat_map(|frame| <[u8; 4]>::from(frame))
-            .collect();
-        if !data.is_empty() {
-            spi.write(&data).expect("Failed to write SPI data");
-            sleep(Duration::from_millis(500));
-        }
+        led_strip.set_led(i, 0x000000);
+        i = (i + 1) % NUM_LEDS;
+        led_strip.set_led(i, 0xff0000);
+
+        spi.write(led_strip.get_spi_data())
+            .expect("Failed to write SPI data");
+        sleep(Duration::from_millis(500));
     }
 }
