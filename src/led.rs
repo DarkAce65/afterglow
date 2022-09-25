@@ -66,7 +66,9 @@ impl<const N: usize> LEDStrip<N> {
         assert!(index < N, "index out of bounds");
 
         self.data[index] = APA102DataFrame::led_frame(color);
-        self.spi_data = LazyCell::new();
+        if self.spi_data.filled() {
+            self.spi_data = LazyCell::new();
+        }
     }
 }
 
