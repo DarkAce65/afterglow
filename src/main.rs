@@ -2,8 +2,6 @@
 
 use rayon::prelude::*;
 
-mod led;
-
 use dialoguer::theme::ColorfulTheme;
 use dialoguer::Select;
 use minifb::{Key, Window, WindowOptions};
