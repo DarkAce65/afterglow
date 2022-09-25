@@ -37,7 +37,7 @@ impl<const N: usize> LEDStrip<N> {
         assert!(N > 0, "LEDStrip must have at least one LED");
 
         Self {
-            data: data.map(|d| APA102DataFrame::led_frame(d)),
+            data: data.map(APA102DataFrame::led_frame),
             spi_data: LazyCell::new(),
         }
     }
@@ -60,6 +60,13 @@ impl<const N: usize> LEDStrip<N> {
         }
 
         self.spi_data.borrow().unwrap()
+    }
+
+    pub fn set_led(&mut self, index: usize, color: u32) {
+        assert!(index < N, "index out of bounds");
+
+        self.data[index] = APA102DataFrame::led_frame(color);
+        self.spi_data = LazyCell::new();
     }
 }
 
@@ -130,6 +137,56 @@ mod tests {
                 0xff, 0x00, 0x00, 0xff, // Data frame
                 0xff, 0x00, 0xff, 0x00, // Data frame
                 0xff, 0xff, 0x00, 0x00, // Data frame
+                0xff, 0x40, 0x80, 0x4b, // Data frame
+                0xff, 0xff, 0xff, 0xff, // End frame
+                0xff, 0xff, 0xff, 0xff, // End frame
+            ]
+        );
+    }
+
+    #[test]
+    fn it_sets_an_led() {
+        let mut led_strip = LEDStrip::new_with_data([0xff0000, 0x00ff00, 0x0000ff, 0x4b8040]);
+        assert_eq!(
+            led_strip.data,
+            [
+                APA102DataFrame::Led(255, 0, 0),
+                APA102DataFrame::Led(0, 255, 0),
+                APA102DataFrame::Led(0, 0, 255),
+                APA102DataFrame::Led(75, 128, 64),
+            ]
+        );
+        assert_eq!(
+            led_strip.get_spi_data(),
+            &[
+                0x00, 0x00, 0x00, 0x00, // Start frame
+                0xff, 0x00, 0x00, 0xff, // Data frame
+                0xff, 0x00, 0xff, 0x00, // Data frame
+                0xff, 0xff, 0x00, 0x00, // Data frame
+                0xff, 0x40, 0x80, 0x4b, // Data frame
+                0xff, 0xff, 0xff, 0xff, // End frame
+                0xff, 0xff, 0xff, 0xff, // End frame
+            ]
+        );
+
+        led_strip.set_led(2, 0xf329b2);
+
+        assert_eq!(
+            led_strip.data,
+            [
+                APA102DataFrame::Led(255, 0, 0),
+                APA102DataFrame::Led(0, 255, 0),
+                APA102DataFrame::Led(243, 41, 178),
+                APA102DataFrame::Led(75, 128, 64),
+            ]
+        );
+        assert_eq!(
+            led_strip.get_spi_data(),
+            &[
+                0x00, 0x00, 0x00, 0x00, // Start frame
+                0xff, 0x00, 0x00, 0xff, // Data frame
+                0xff, 0x00, 0xff, 0x00, // Data frame
+                0xff, 0xb2, 0x29, 0xf3, // Data frame
                 0xff, 0x40, 0x80, 0x4b, // Data frame
                 0xff, 0xff, 0xff, 0xff, // End frame
                 0xff, 0xff, 0xff, 0xff, // End frame
