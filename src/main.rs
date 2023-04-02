@@ -5,7 +5,11 @@ use rayon::prelude::*;
 use dialoguer::theme::ColorfulTheme;
 use dialoguer::Select;
 use minifb::{Key, Window, WindowOptions};
-use nokhwa::{Camera, CameraFormat, FrameFormat, Resolution};
+use nokhwa::pixel_format::RgbFormat;
+use nokhwa::utils::{
+    CameraFormat, CameraIndex, FrameFormat, RequestedFormat, RequestedFormatType, Resolution,
+};
+use nokhwa::Camera;
 use std::cmp::Ordering;
 use std::{thread, time::Duration};
 
@@ -14,13 +18,14 @@ fn from_u8_rgb(r: u8, g: u8, b: u8) -> u32 {
     (r << 16) | (g << 8) | b
 }
 
-fn prompt_camera_device() -> usize {
-    let mut devices = nokhwa::query().expect("Unable to query video devices");
+fn prompt_camera_device() -> CameraIndex {
+    let mut devices =
+        nokhwa::query(nokhwa::utils::ApiBackend::Auto).expect("Unable to query video devices");
     if devices.is_empty() {
         panic!("No devices found");
     }
 
-    devices.sort_by_key(|device| device.index());
+    devices.sort_by_key(|device| device.index().clone());
     let device_options: Vec<String> = devices
         .iter()
         .map(|device| format!("{} ({})", device.human_name(), device.description()))
@@ -33,11 +38,15 @@ fn prompt_camera_device() -> usize {
         .interact()
         .expect("Must choose a video device to capture from");
 
-    devices[selection].index()
+    devices[selection].index().clone()
 }
 
-fn prompt_camera(camera_index: usize) -> Camera {
-    let mut camera = Camera::new(camera_index, None).expect("Unable to build camera");
+fn prompt_camera(camera_index: CameraIndex) -> Camera {
+    let mut camera = Camera::new(
+        camera_index,
+        RequestedFormat::new::<RgbFormat>(RequestedFormatType::None),
+    )
+    .expect("Unable to build camera");
     let camera_resolutions = camera
         .compatible_list_by_resolution(FrameFormat::YUYV)
         .expect("Unable to get available camera resolutions");
@@ -72,13 +81,15 @@ fn prompt_camera(camera_index: usize) -> Camera {
         .items(fps_options)
         .default(0)
         .interact()
-        .expect("Must choose an fps opiton");
+        .expect("Must choose an fps option");
 
     camera
-        .set_camera_format(CameraFormat::new(
-            *resolutions[selected_resolution_index],
-            FrameFormat::YUYV,
-            fps_options[selected_fps_index],
+        .set_camera_requset(RequestedFormat::new::<RgbFormat>(
+            RequestedFormatType::Closest(CameraFormat::new(
+                *resolutions[selected_resolution_index],
+                FrameFormat::YUYV,
+                fps_options[selected_fps_index],
+            )),
         ))
         .expect("Failed to set camera format");
 
@@ -106,7 +117,8 @@ fn start_visual_debugger(mut camera: Camera) {
     while window.is_open() && !window.is_key_down(Key::Escape) {
         let frame = camera.frame().expect("Unable to get frame from camera");
         let image_buffer: Vec<u32> = frame
-            .as_raw()
+            .decode_image::<RgbFormat>()
+            .unwrap()
             .par_chunks_exact(3)
             .map(|pixel| from_u8_rgb(pixel[0], pixel[1], pixel[2]))
             .collect();
