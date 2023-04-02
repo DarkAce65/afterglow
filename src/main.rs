@@ -11,6 +11,7 @@ use nokhwa::utils::{
 };
 use nokhwa::Camera;
 use std::cmp::Ordering;
+use std::f64::consts::{PI, TAU};
 use std::{thread, time::Duration};
 
 fn from_u8_rgb(r: u8, g: u8, b: u8) -> u32 {
@@ -98,8 +99,27 @@ fn prompt_camera(camera_index: CameraIndex) -> Camera {
 
 fn start_visual_debugger(mut camera: Camera) {
     let resolution = camera.resolution();
-    let width: usize = resolution.width().try_into().unwrap();
-    let height: usize = resolution.height().try_into().unwrap();
+    let width = resolution.width() as i32;
+    let height = resolution.height() as i32;
+
+    let edge = 0.6;
+    let num_leds = 50;
+    let mut segment_table: Vec<u32> = Vec::new();
+    let hw = width / 2;
+    let hh = height / 2;
+    for y in 0..height {
+        let dy = (y - hh) as f64;
+        for x in 0..width {
+            let dx = (hw - x) as f64;
+            let theta = dy.atan2(dx) + PI;
+
+            let segment = (theta / TAU * f64::from(num_leds)).floor() as u32;
+            segment_table.push(segment);
+        }
+    }
+
+    let width = width.try_into().unwrap();
+    let height = height.try_into().unwrap();
 
     let mut window: Window = Window::new(
         "afterglow",
@@ -113,21 +133,34 @@ fn start_visual_debugger(mut camera: Camera) {
     )
     .unwrap();
 
-    let frame_delay = Duration::from_millis((1000 / camera.frame_rate()).into());
+    let image_buffer: Vec<u32> = segment_table
+        .into_par_iter()
+        .map(|segment| (segment * 255 / num_leds) << 16)
+        .collect();
+
     while window.is_open() && !window.is_key_down(Key::Escape) {
-        let frame = camera.frame().expect("Unable to get frame from camera");
-        let image_buffer: Vec<u32> = frame
-            .decode_image::<RgbFormat>()
-            .unwrap()
-            .par_chunks_exact(3)
-            .map(|pixel| from_u8_rgb(pixel[0], pixel[1], pixel[2]))
-            .collect();
         window
             .update_with_buffer(&image_buffer, width, height)
             .unwrap();
 
-        thread::sleep(frame_delay);
+        thread::sleep(Duration::from_millis(250).into());
     }
+
+    // let frame_delay = Duration::from_millis((1000 / camera.frame_rate()).into());
+    // while window.is_open() && !window.is_key_down(Key::Escape) {
+    //     let frame = camera.frame().expect("Unable to get frame from camera");
+    //     let image_buffer: Vec<u32> = frame
+    //         .decode_image::<RgbFormat>()
+    //         .unwrap()
+    //         .par_chunks_exact(3)
+    //         .map(|pixel| from_u8_rgb(pixel[0], pixel[1], pixel[2]))
+    //         .collect();
+    //     window
+    //         .update_with_buffer(&image_buffer, width, height)
+    //         .unwrap();
+
+    //     thread::sleep(frame_delay);
+    // }
 }
 
 fn main() {
