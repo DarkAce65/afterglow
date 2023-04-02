@@ -1,7 +1,5 @@
 #![deny(clippy::all)]
 
-use rayon::prelude::*;
-
 use dialoguer::theme::ColorfulTheme;
 use dialoguer::Select;
 use minifb::{Key, Window, WindowOptions};
@@ -14,8 +12,12 @@ use std::cmp::Ordering;
 use std::f64::consts::{PI, TAU};
 use std::{thread, time::Duration};
 
-fn from_u8_rgb(r: u8, g: u8, b: u8) -> u32 {
-    let (r, g, b) = (r as u32, g as u32, b as u32);
+fn from_u64_rgb(r: u64, g: u64, b: u64) -> u32 {
+    let (r, g, b): (u32, u32, u32) = (
+        r.try_into().unwrap(),
+        g.try_into().unwrap(),
+        b.try_into().unwrap(),
+    );
     (r << 16) | (g << 8) | b
 }
 
@@ -97,26 +99,42 @@ fn prompt_camera(camera_index: CameraIndex) -> Camera {
     camera
 }
 
-fn start_visual_debugger(mut camera: Camera) {
-    let resolution = camera.resolution();
-    let width = resolution.width() as i32;
-    let height = resolution.height() as i32;
+fn build_segment_map(num_leds: usize, width: u32, height: u32) -> Vec<Option<usize>> {
+    let mut segment_table: Vec<Option<usize>> =
+        Vec::with_capacity((width * height).try_into().unwrap());
 
-    let edge = 0.6;
-    let num_leds = 50;
-    let mut segment_table: Vec<u32> = Vec::new();
-    let hw = width / 2;
-    let hh = height / 2;
+    let width = width as i32;
+    let height = height as i32;
+    let half_width = width / 2;
+    let half_height = height / 2;
+    let edge = half_width.min(half_height) / 2;
+
+    let theta_scalar = (num_leds as f64) / TAU;
+
     for y in 0..height {
-        let dy = (y - hh) as f64;
+        let dy = (y - half_height) as f64;
         for x in 0..width {
-            let dx = (hw - x) as f64;
-            let theta = dy.atan2(dx) + PI;
-
-            let segment = (theta / TAU * f64::from(num_leds)).floor() as u32;
-            segment_table.push(segment);
+            let dx = (half_width - x) as f64;
+            segment_table.push(if dx.hypot(dy) >= edge.into() {
+                let theta = dy.atan2(dx) + PI;
+                let segment = ((theta * theta_scalar).floor() as usize).min(num_leds - 1);
+                Some(segment)
+            } else {
+                None
+            });
         }
     }
+
+    segment_table
+}
+
+fn start_visual_debugger(mut camera: Camera) {
+    let resolution = camera.resolution();
+    let width = resolution.width();
+    let height = resolution.height();
+
+    const NUM_LEDS: usize = 50;
+    let segment_map = build_segment_map(NUM_LEDS, width, height);
 
     let width = width.try_into().unwrap();
     let height = height.try_into().unwrap();
@@ -133,34 +151,50 @@ fn start_visual_debugger(mut camera: Camera) {
     )
     .unwrap();
 
-    let image_buffer: Vec<u32> = segment_table
-        .into_par_iter()
-        .map(|segment| (segment * 255 / num_leds) << 16)
-        .collect();
+    let frame_delay = Duration::from_millis((1000 / camera.frame_rate()).into());
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
+        let frame = camera.frame().expect("Unable to get frame from camera");
+        let decoded_image = frame.decode_image::<RgbFormat>().unwrap();
+
+        let mut led_values: [(u64, u64, u64); NUM_LEDS] = [(0, 0, 0); NUM_LEDS];
+        let mut counts: [u64; NUM_LEDS] = [0; NUM_LEDS];
+        for (index, pixel) in decoded_image.chunks_exact(3).enumerate() {
+            if let Some(segment) = segment_map[index] {
+                if counts[segment] == 0 {
+                    led_values[segment].0 = u64::from(pixel[0]).pow(2);
+                    led_values[segment].1 = u64::from(pixel[1]).pow(2);
+                    led_values[segment].2 = u64::from(pixel[2]).pow(2);
+                } else {
+                    led_values[segment].0 += u64::from(pixel[0]).pow(2);
+                    led_values[segment].1 += u64::from(pixel[1]).pow(2);
+                    led_values[segment].2 += u64::from(pixel[2]).pow(2);
+                }
+                counts[segment] += 1;
+            }
+        }
+
+        let image_buffer: Vec<u32> = (0..(width * height))
+            .map(|index| match segment_map[index] {
+                Some(segment) => {
+                    let (r, g, b) = led_values[segment];
+                    let count = counts[segment];
+                    from_u64_rgb(
+                        ((r / count) as f64).sqrt() as u64,
+                        ((g / count) as f64).sqrt() as u64,
+                        ((b / count) as f64).sqrt() as u64,
+                    )
+                }
+                None => 0,
+            })
+            .collect();
+
         window
             .update_with_buffer(&image_buffer, width, height)
             .unwrap();
 
-        thread::sleep(Duration::from_millis(250).into());
+        thread::sleep(frame_delay);
     }
-
-    // let frame_delay = Duration::from_millis((1000 / camera.frame_rate()).into());
-    // while window.is_open() && !window.is_key_down(Key::Escape) {
-    //     let frame = camera.frame().expect("Unable to get frame from camera");
-    //     let image_buffer: Vec<u32> = frame
-    //         .decode_image::<RgbFormat>()
-    //         .unwrap()
-    //         .par_chunks_exact(3)
-    //         .map(|pixel| from_u8_rgb(pixel[0], pixel[1], pixel[2]))
-    //         .collect();
-    //     window
-    //         .update_with_buffer(&image_buffer, width, height)
-    //         .unwrap();
-
-    //     thread::sleep(frame_delay);
-    // }
 }
 
 fn main() {
