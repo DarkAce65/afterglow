@@ -137,12 +137,13 @@ fn start_visual_debugger(mut camera: Camera) {
     let segment_map = build_segment_map(NUM_LEDS, width, height);
 
     let width = width.try_into().unwrap();
-    let height = height.try_into().unwrap();
+    let height: usize = height.try_into().unwrap();
+    let window_height = height * 2;
 
     let mut window: Window = Window::new(
         "afterglow",
         width,
-        height,
+        window_height,
         WindowOptions {
             title: false,
             borderless: true,
@@ -153,6 +154,11 @@ fn start_visual_debugger(mut camera: Camera) {
 
     let frame_delay = Duration::from_millis((1000 / camera.frame_rate()).into());
 
+    let mut source_image = Vec::with_capacity(width * height);
+    for _ in 0..width * height {
+        source_image.push(0);
+    }
+
     while window.is_open() && !window.is_key_down(Key::Escape) {
         let frame = camera.frame().expect("Unable to get frame from camera");
         let decoded_image = frame.decode_image::<RgbFormat>().unwrap();
@@ -160,37 +166,51 @@ fn start_visual_debugger(mut camera: Camera) {
         let mut led_values: [(u64, u64, u64); NUM_LEDS] = [(0, 0, 0); NUM_LEDS];
         let mut counts: [u64; NUM_LEDS] = [0; NUM_LEDS];
         for (index, pixel) in decoded_image.chunks_exact(3).enumerate() {
+            let (r, g, b) = (
+                u64::from(pixel[0]),
+                u64::from(pixel[1]),
+                u64::from(pixel[2]),
+            );
+
+            source_image[index] = from_u64_rgb(r, g, b);
+
             if let Some(segment) = segment_map[index] {
                 if counts[segment] == 0 {
-                    led_values[segment].0 = u64::from(pixel[0]).pow(2);
-                    led_values[segment].1 = u64::from(pixel[1]).pow(2);
-                    led_values[segment].2 = u64::from(pixel[2]).pow(2);
+                    led_values[segment].0 = r.pow(2);
+                    led_values[segment].1 = g.pow(2);
+                    led_values[segment].2 = b.pow(2);
                 } else {
-                    led_values[segment].0 += u64::from(pixel[0]).pow(2);
-                    led_values[segment].1 += u64::from(pixel[1]).pow(2);
-                    led_values[segment].2 += u64::from(pixel[2]).pow(2);
+                    led_values[segment].0 += r.pow(2);
+                    led_values[segment].1 += g.pow(2);
+                    led_values[segment].2 += b.pow(2);
                 }
                 counts[segment] += 1;
             }
         }
 
-        let image_buffer: Vec<u32> = (0..(width * height))
-            .map(|index| match segment_map[index] {
-                Some(segment) => {
-                    let (r, g, b) = led_values[segment];
-                    let count = counts[segment];
-                    from_u64_rgb(
-                        ((r / count) as f64).sqrt() as u64,
-                        ((g / count) as f64).sqrt() as u64,
-                        ((b / count) as f64).sqrt() as u64,
-                    )
+        let image_buffer: Vec<u32> = (0..(width * window_height))
+            .map(|index| {
+                if index < width * height {
+                    match segment_map[index] {
+                        Some(segment) => {
+                            let (r, g, b) = led_values[segment];
+                            let count = counts[segment];
+                            from_u64_rgb(
+                                ((r / count) as f64).sqrt() as u64,
+                                ((g / count) as f64).sqrt() as u64,
+                                ((b / count) as f64).sqrt() as u64,
+                            )
+                        }
+                        None => 0,
+                    }
+                } else {
+                    source_image[index - width * height]
                 }
-                None => 0,
             })
             .collect();
 
         window
-            .update_with_buffer(&image_buffer, width, height)
+            .update_with_buffer(&image_buffer, width, window_height)
             .unwrap();
 
         thread::sleep(frame_delay);
